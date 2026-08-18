@@ -15,6 +15,15 @@ const compat = new FlatCompat({
 
 export default [
   ...compat.extends("prettier"),
+  // ── Test files: add Jest globals so no-undef doesn't flag describe/it/expect
+  {
+    files: ["tests/**/*.js", "tests/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.jest,
+      },
+    },
+  },
   {
     languageOptions: {
       globals: {

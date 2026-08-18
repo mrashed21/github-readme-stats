@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "checkJs": false,
+    "types": ["jest"]
+  },
+  "include": ["src/**/*.js", "tests/**/*.js", "api/**/*.js", "scripts/**/*.js"]
+}

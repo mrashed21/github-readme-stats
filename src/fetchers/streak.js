@@ -20,6 +20,7 @@ const STREAK_QUERY = `
           weeks {
             contributionDays {
               contributionCount
+              contributionLevel
               date
             }
           }
@@ -210,11 +211,15 @@ const fetchStreak = async (username) => {
 
   const { contributionCalendar } = res.data.data.user.contributionsCollection;
 
+  // Flatten all weeks → contribution days and sort chronologically.
+  // GitHub dates are YYYY-MM-DD strings; lexicographic sort == date sort.
   /** @type {StreakDay[]} */
-  const days = contributionCalendar.weeks.flatMap(
-    (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
-      week.contributionDays,
-  );
+  const days = contributionCalendar.weeks
+    .flatMap(
+      (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
+        week.contributionDays,
+    )
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const { currentStreak, longestStreak, firstContribution } =
     calculateStreaks(days);

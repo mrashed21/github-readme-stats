@@ -418,11 +418,17 @@ const renderStreakCard = (data, options = {}) => {
     longestStreak.length,
   );
 
-  // Fire emoji (inline SVG path) — used when there's an active streak
+  // Fire emoji + "Days" label on the same row above the ring
+  // Both elements share the same y-coordinate so they appear side-by-side.
+  const fireRowY = centerY - ringR - 13;
   const fireSvg = hasStreak
-    ? `<text x="${centerX}" y="${centerY - ringR - 10}" text-anchor="middle"
-         font-size="18" fill="${fireColor}" font-family="'Segoe UI', Ubuntu, Sans-Serif">🔥</text>`
-    : "";
+    ? `<text text-anchor="middle" x="${centerX}" y="${fireRowY}"
+         font-family="'Segoe UI', Ubuntu, Sans-Serif" font-size="12">
+        <tspan font-size="14" fill="${fireColor}" dy="0">🔥</tspan
+        ><tspan fill="${currLabelColor}" dx="3" dy="1" font-weight="400"> Days</tspan>
+       </text>`
+    : `<text class="label" text-anchor="middle" x="${centerX}" y="${fireRowY}"
+        fill="${currLabelColor}">Days</text>`;
 
   const borderStrokeOpacity = hide_border ? "0" : "1";
 
@@ -529,10 +535,7 @@ const renderStreakCard = (data, options = {}) => {
     x="${centerX}" y="${centerY + ringR + 40}"
     fill="${dateColor}">${encodeHTML(currentDateRange)}</text>
 
-  <!-- Label above ring -->
-  <text class="label" text-anchor="middle"
-    x="${centerX}" y="${centerY - ringR - 24}"
-    fill="${currLabelColor}">days</text>
+  <!-- Fire + Days label rendered inline via fireSvg above -->
 
   <!-- ── RIGHT PANEL: Longest Streak ──────────────────────────────────── -->
   <g transform="translate(${divX2 + divX1 / 2}, ${centerY})">
