@@ -423,12 +423,13 @@ const renderStreakCard = (data, options = {}) => {
   const fireRowY = centerY - ringR - 13;
   const fireSvg = hasStreak
     ? `<text text-anchor="middle" x="${centerX}" y="${fireRowY}"
-         font-family="'Segoe UI', Ubuntu, Sans-Serif" font-size="12">
-        <tspan font-size="14" fill="${fireColor}" dy="0">🔥</tspan
-        ><tspan fill="${currLabelColor}" dx="3" dy="1" font-weight="400"> Days</tspan>
+         font-family="'Segoe UI', Ubuntu, Sans-Serif" font-size="13"
+         dominant-baseline="middle">
+        <tspan fill="${fireColor}">🔥</tspan
+        ><tspan fill="${currLabelColor}" dx="4" font-weight="600"> Days</tspan>
        </text>`
     : `<text class="label" text-anchor="middle" x="${centerX}" y="${fireRowY}"
-        fill="${currLabelColor}">Days</text>`;
+        dominant-baseline="middle" fill="${currLabelColor}">Days</text>`;
 
   const borderStrokeOpacity = hide_border ? "0" : "1";
 
