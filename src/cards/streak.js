@@ -418,7 +418,7 @@ const renderStreakCard = (data, options = {}) => {
     longestStreak.length,
   );
 
-  // Fire emoji + "Days" label on the same row above the ring
+  // Fire emoji + "DAYS" label on the same row above the ring
   // Both elements share the same y-coordinate so they appear side-by-side.
   const fireRowY = centerY - ringR - 13;
   const fireSvg = hasStreak
@@ -426,10 +426,10 @@ const renderStreakCard = (data, options = {}) => {
          font-family="'Segoe UI', Ubuntu, Sans-Serif" font-size="13"
          dominant-baseline="middle">
         <tspan fill="${fireColor}">🔥</tspan
-        ><tspan fill="${currLabelColor}" dx="4" font-weight="600"> Days</tspan>
+        ><tspan fill="${currLabelColor}" dx="4" font-weight="600"> DAYS</tspan>
        </text>`
     : `<text class="label" text-anchor="middle" x="${centerX}" y="${fireRowY}"
-        dominant-baseline="middle" fill="${currLabelColor}">Days</text>`;
+        dominant-baseline="middle" fill="${currLabelColor}">DAYS</text>`;
 
   const borderStrokeOpacity = hide_border ? "0" : "1";
 

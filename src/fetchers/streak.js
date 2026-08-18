@@ -32,20 +32,27 @@ const STREAK_QUERY = `
 `;
 
 /**
- * Builds a dynamic GraphQL query to fetch multiple years of contributions.
+ * Builds a GraphQL query to fetch a single year of contributions.
  * @param {string} login GitHub username.
- * @param {number} startYear Year to start fetching from.
- * @param {number} endYear Year to end fetching at.
+ * @param {number} year Year to fetch.
  * @returns {string} GraphQL query string.
  */
-const buildHistoryQuery = (login, startYear, endYear) => {
-  let query = `query userContributionsHistory($login: String!) {\n  user(login: $login) {\n`;
-  for (let y = startYear; y <= endYear; y++) {
-    query += `    y${y}: contributionsCollection(from: "${y}-01-01T00:00:00Z", to: "${y}-12-31T23:59:59Z") {\n`;
-    query += `      contributionCalendar {\n        weeks {\n          contributionDays {\n            contributionCount\n            contributionLevel\n            date\n          }\n        }\n      }\n    }\n`;
-  }
-  query += `  }\n}`;
-  return query;
+const buildYearQuery = (login, year) => {
+  return `query userContributionsHistory($login: String!) {
+    user(login: $login) {
+      contributionsCollection(from: "${year}-01-01T00:00:00Z", to: "${year}-12-31T23:59:59Z") {
+        contributionCalendar {
+          weeks {
+            contributionDays {
+              contributionCount
+              contributionLevel
+              date
+            }
+          }
+        }
+      }
+    }
+  }`;
 };
 
 /**
@@ -240,62 +247,70 @@ const fetchStreak = async (username) => {
   const creationYear = new Date(createdAt).getUTCFullYear();
   const currentYear = new Date().getUTCFullYear();
 
-  // If user was created before the current year, fetch their historical contributions
-  if (creationYear < currentYear) {
-    const historyQuery = buildHistoryQuery(
-      username,
-      creationYear,
-      currentYear - 1,
-    );
+  let currentFetchedYear = currentYear - 1;
+  let allDays = [...days];
+  allDays.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-    const historyRes = await retryer(
+  // Determine if the current streak reaches the beginning of our fetched days
+  let stats = calculateStreaks(allDays);
+  let streakReachesOldestDay = stats.currentStreak.start === allDays[0].date;
+
+  // Sequentially fetch older years if the streak is unbroken at the boundary
+  while (streakReachesOldestDay && currentFetchedYear >= creationYear) {
+    const yearQuery = buildYearQuery(username, currentFetchedYear);
+
+    const yearRes = await retryer(
       (variables, token) => {
         const resolvedToken = token || process.env.GITHUB_TOKEN || "";
         return request(
-          { query: historyQuery, variables },
+          { query: yearQuery, variables },
           { Authorization: `bearer ${resolvedToken}` },
         );
       },
       { login: username },
     );
 
-    if (historyRes.data && historyRes.data.data && historyRes.data.data.user) {
-      for (let y = creationYear; y <= currentYear - 1; y++) {
-        const collection = historyRes.data.data.user[`y${y}`];
-        if (collection && collection.contributionCalendar) {
-          const yearDays = collection.contributionCalendar.weeks.flatMap(
-            (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
-              week.contributionDays,
-          );
-          days.push(...yearDays);
-        }
+    if (yearRes.data && yearRes.data.data && yearRes.data.data.user) {
+      const collection = yearRes.data.data.user.contributionsCollection;
+      if (collection && collection.contributionCalendar) {
+        const yearDays = collection.contributionCalendar.weeks.flatMap(
+          (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
+            week.contributionDays,
+        );
+        allDays.push(...yearDays);
       }
+    } else {
+      break; // Stop if there's an error fetching this year
     }
-  }
 
-  // De-duplicate days since default query covers the past 365 days
-  // (which might overlap with currentYear - 1).
-  const uniqueDaysMap = new Map();
-  for (const day of days) {
-    uniqueDaysMap.set(day.date, day);
-  }
+    // Deduplicate and sort days
+    const uniqueDaysMap = new Map();
+    for (const day of allDays) {
+      uniqueDaysMap.set(day.date, day);
+    }
+    allDays = Array.from(uniqueDaysMap.values());
+    allDays.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-  const uniqueDays = Array.from(uniqueDaysMap.values());
-  uniqueDays.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    stats = calculateStreaks(allDays);
+
+    // Check if streak still reaches the oldest day of the newly expanded data
+    if (stats.currentStreak.start !== allDays[0].date) {
+      break; // Streak broke in this year, no need to fetch older years
+    }
+
+    currentFetchedYear--;
+  }
 
   let totalContributions = 0;
-  for (const day of uniqueDays) {
+  for (const day of allDays) {
     totalContributions += day.contributionCount;
   }
 
-  const { currentStreak, longestStreak, firstContribution } =
-    calculateStreaks(uniqueDays);
-
   return {
     totalContributions,
-    currentStreak,
-    longestStreak,
-    firstContribution,
+    currentStreak: stats.currentStreak,
+    longestStreak: stats.longestStreak,
+    firstContribution: stats.firstContribution,
   };
 };
 
