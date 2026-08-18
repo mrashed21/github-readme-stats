@@ -9,11 +9,12 @@ import { MissingParamError } from "../common/error.js";
 dotenv.config();
 
 /**
- * GraphQL query to retrieve the contribution calendar for the past year.
+ * GraphQL query to retrieve the contribution calendar for the past year and user creation date.
  */
 const STREAK_QUERY = `
   query userContributions($login: String!) {
     user(login: $login) {
+      createdAt
       contributionsCollection {
         contributionCalendar {
           totalContributions
@@ -29,6 +30,23 @@ const STREAK_QUERY = `
     }
   }
 `;
+
+/**
+ * Builds a dynamic GraphQL query to fetch multiple years of contributions.
+ * @param {string} login GitHub username.
+ * @param {number} startYear Year to start fetching from.
+ * @param {number} endYear Year to end fetching at.
+ * @returns {string} GraphQL query string.
+ */
+const buildHistoryQuery = (login, startYear, endYear) => {
+  let query = `query userContributionsHistory($login: String!) {\n  user(login: $login) {\n`;
+  for (let y = startYear; y <= endYear; y++) {
+    query += `    y${y}: contributionsCollection(from: "${y}-01-01T00:00:00Z", to: "${y}-12-31T23:59:59Z") {\n`;
+    query += `      contributionCalendar {\n        weeks {\n          contributionDays {\n            contributionCount\n            contributionLevel\n            date\n          }\n        }\n      }\n    }\n`;
+  }
+  query += `  }\n}`;
+  return query;
+};
 
 /**
  * Fetcher function that wraps the GraphQL request for use with retryer.
@@ -61,9 +79,9 @@ const streakFetcher = (variables, token) => {
 
 /**
  * @typedef {Object} StreakData
- * @property {number} totalContributions Total contributions in the past year.
+ * @property {number} totalContributions Total contributions across all fetched years.
  * @property {StreakRange} currentStreak Current streak stats.
- * @property {StreakRange} longestStreak Longest streak stats in the past year.
+ * @property {StreakRange} longestStreak Longest streak stats.
  * @property {string|null} firstContribution ISO date of the first contribution day, or null.
  */
 
@@ -210,22 +228,71 @@ const fetchStreak = async (username) => {
   }
 
   const { contributionCalendar } = res.data.data.user.contributionsCollection;
+  const createdAt = res.data.data.user.createdAt;
 
-  // Flatten all weeks → contribution days and sort chronologically.
-  // GitHub dates are YYYY-MM-DD strings; lexicographic sort == date sort.
+  // Flatten all weeks → contribution days from the past year.
   /** @type {StreakDay[]} */
-  const days = contributionCalendar.weeks
-    .flatMap(
-      (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
-        week.contributionDays,
-    )
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const days = contributionCalendar.weeks.flatMap(
+    (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
+      week.contributionDays,
+  );
+
+  const creationYear = new Date(createdAt).getUTCFullYear();
+  const currentYear = new Date().getUTCFullYear();
+
+  // If user was created before the current year, fetch their historical contributions
+  if (creationYear < currentYear) {
+    const historyQuery = buildHistoryQuery(
+      username,
+      creationYear,
+      currentYear - 1,
+    );
+
+    const historyRes = await retryer(
+      (variables, token) => {
+        const resolvedToken = token || process.env.GITHUB_TOKEN || "";
+        return request(
+          { query: historyQuery, variables },
+          { Authorization: `bearer ${resolvedToken}` },
+        );
+      },
+      { login: username },
+    );
+
+    if (historyRes.data && historyRes.data.data && historyRes.data.data.user) {
+      for (let y = creationYear; y <= currentYear - 1; y++) {
+        const collection = historyRes.data.data.user[`y${y}`];
+        if (collection && collection.contributionCalendar) {
+          const yearDays = collection.contributionCalendar.weeks.flatMap(
+            (/** @type {{ contributionDays: StreakDay[] }} */ week) =>
+              week.contributionDays,
+          );
+          days.push(...yearDays);
+        }
+      }
+    }
+  }
+
+  // De-duplicate days since default query covers the past 365 days
+  // (which might overlap with currentYear - 1).
+  const uniqueDaysMap = new Map();
+  for (const day of days) {
+    uniqueDaysMap.set(day.date, day);
+  }
+
+  const uniqueDays = Array.from(uniqueDaysMap.values());
+  uniqueDays.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  let totalContributions = 0;
+  for (const day of uniqueDays) {
+    totalContributions += day.contributionCount;
+  }
 
   const { currentStreak, longestStreak, firstContribution } =
-    calculateStreaks(days);
+    calculateStreaks(uniqueDays);
 
   return {
-    totalContributions: contributionCalendar.totalContributions,
+    totalContributions,
     currentStreak,
     longestStreak,
     firstContribution,
